@@ -165,7 +165,3 @@ anomaly detection/
     └── app.js
 ```
 
-## 📜 License
-
-Built for AI Friday Season 2 — TCS Internal, March 2026
-
