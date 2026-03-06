@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+{% block title %}Upload Data - SupplyChain AI{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Upload Inventory Data</h1>
+    <p class="subtitle">Import your own CSV data for anomaly analysis</p>
+</div>
+
+<div class="upload-container">
+    <div class="card upload-card">
+        {% if error %}
+        <div class="alert alert-error">
+            <span class="alert-icon">❌</span>
+            {{ error }}
+        </div>
+        {% endif %}
+
+        {% if success %}
+        <div class="alert alert-success">
+            <span class="alert-icon">✅</span>
+            {{ success }}
+        </div>
+        {% endif %}
+
+        <form method="POST" enctype="multipart/form-data" class="upload-form">
+            <div class="upload-dropzone" id="dropzone">
+                <div class="dropzone-icon">📁</div>
+                <h3>Drop your CSV file here</h3>
+                <p>or</p>
+                <label for="fileInput" class="btn btn-primary">Choose File</label>
+                <input type="file" name="file" id="fileInput" accept=".csv" style="display:none;">
+                <p class="file-name" id="fileName"></p>
+            </div>
+
+            <button type="submit" class="btn btn-primary btn-lg btn-full" id="uploadBtn" disabled>
+                Upload & Import
+            </button>
+        </form>
+    </div>
+
+    <div class="card format-card">
+        <h3>📋 Required CSV Format</h3>
+        <p>Your CSV file must include these required columns:</p>
+
+        <div class="table-container">
+            <table class="data-table format-table">
+                <thead>
+                    <tr>
+                        <th>Column</th>
+                        <th>Type</th>
+                        <th>Required</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="mono">date</td>
+                        <td>YYYY-MM-DD</td>
+                        <td>✅</td>
+                        <td>Date of the inventory record</td>
+                    </tr>
+                    <tr>
+                        <td class="mono">product_id</td>
+                        <td>String</td>
+                        <td>✅</td>
+                        <td>Product SKU identifier</td>
+                    </tr>
+                    <tr>
+                        <td class="mono">stock_level</td>
+                        <td>Integer</td>
+                        <td>✅</td>
+                        <td>Current stock quantity</td>
+                    </tr>
+                    <tr>
+                        <td class="mono">is_anomaly</td>
+                        <td>0/1</td>
+                        <td>✅</td>
+                        <td>Whether this record is an anomaly</td>
+                    </tr>
+                    <tr>
+                        <td class="mono">product_name</td>
+                        <td>String</td>
+                        <td>Optional</td>
+                        <td>Human-readable product name</td>
+                    </tr>
+                    <tr>
+                        <td class="mono">category</td>
+                        <td>String</td>
+                        <td>Optional</td>
+                        <td>Product category</td>
+                    </tr>
+                    <tr>
+                        <td class="mono">distribution_center_id</td>
+                        <td>String</td>
+                        <td>Optional</td>
+                        <td>DC identifier</td>
+                    </tr>
+                    <tr>
+                        <td class="mono">distribution_center</td>
+                        <td>String</td>
+                        <td>Optional</td>
+                        <td>DC name</td>
+                    </tr>
+                    <tr>
+                        <td class="mono">region</td>
+                        <td>String</td>
+                        <td>Optional</td>
+                        <td>Geographic region</td>
+                    </tr>
+                    <tr>
+                        <td class="mono">sales_rate</td>
+                        <td>Float</td>
+                        <td>Optional</td>
+                        <td>Daily sales rate</td>
+                    </tr>
+                    <tr>
+                        <td class="mono">demand_forecast</td>
+                        <td>Float</td>
+                        <td>Optional</td>
+                        <td>Predicted demand</td>
+                    </tr>
+                    <tr>
+                        <td class="mono">reorder_point</td>
+                        <td>Integer</td>
+                        <td>Optional</td>
+                        <td>Reorder threshold</td>
+                    </tr>
+                    <tr>
+                        <td class="mono">lead_time_days</td>
+                        <td>Integer</td>
+                        <td>Optional</td>
+                        <td>Supplier lead time</td>
+                    </tr>
+                    <tr>
+                        <td class="mono">anomaly_type</td>
+                        <td>String</td>
+                        <td>Optional</td>
+                        <td>stockout / overstock / demand_spike / supply_delay / shrinkage / forecast_error</td>
+                    </tr>
+                    <tr>
+                        <td class="mono">anomaly_severity</td>
+                        <td>String</td>
+                        <td>Optional</td>
+                        <td>critical / high / medium</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <h4 style="margin-top: 1.5rem;">Example:</h4>
+        <pre class="code-block">date,product_id,product_name,stock_level,sales_rate,is_anomaly,anomaly_type,anomaly_severity
+2025-06-15,SKU001,Tide Laundry 3L,500,35.0,0,,
+2025-06-16,SKU001,Tide Laundry 3L,5,35.0,1,stockout,critical</pre>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const dropzone = document.getElementById('dropzone');
+    const fileInput = document.getElementById('fileInput');
+    const fileName = document.getElementById('fileName');
+    const uploadBtn = document.getElementById('uploadBtn');
+
+    fileInput.addEventListener('change', function () {
+        if (this.files[0]) {
+            fileName.textContent = this.files[0].name;
+            uploadBtn.disabled = false;
+            dropzone.classList.add('has-file');
+        }
+    });
+
+    dropzone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropzone.classList.add('dragover');
+    });
+
+    dropzone.addEventListener('dragleave', () => {
+        dropzone.classList.remove('dragover');
+    });
+
+    dropzone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropzone.classList.remove('dragover');
+        if (e.dataTransfer.files[0]) {
+            fileInput.files = e.dataTransfer.files;
+            fileName.textContent = e.dataTransfer.files[0].name;
+            uploadBtn.disabled = false;
+            dropzone.classList.add('has-file');
+        }
+    });
+</script>
+{% endblock %}

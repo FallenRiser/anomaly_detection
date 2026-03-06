@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - SupplyChain AI{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Inventory Anomaly Dashboard</h1>
+    <p class="subtitle">Real-time overview of CPG supply chain anomalies</p>
+</div>
+
+<!-- Stat Cards -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-icon blue">📦</div>
+        <div class="stat-info">
+            <span class="stat-value">{{ "{:,}".format(stats.total_records) }}</span>
+            <span class="stat-label">Total Records</span>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon orange">⚠️</div>
+        <div class="stat-info">
+            <span class="stat-value">{{ "{:,}".format(stats.total_anomalies) }}</span>
+            <span class="stat-label">Total Anomalies</span>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon red">🚨</div>
+        <div class="stat-info">
+            <span class="stat-value">{{ stats.critical_anomalies }}</span>
+            <span class="stat-label">Critical Anomalies</span>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon purple">🤖</div>
+        <div class="stat-info">
+            <span class="stat-value">{{ stats.unexplained_anomalies }}</span>
+            <span class="stat-label">Awaiting Explanation</span>
+        </div>
+    </div>
+</div>
+
+<!-- Charts Row -->
+<div class="charts-grid">
+    <div class="chart-card">
+        <h3>Anomalies by Type</h3>
+        <div id="chart-by-type"></div>
+    </div>
+    <div class="chart-card">
+        <h3>Anomalies by Severity</h3>
+        <div id="chart-by-severity"></div>
+    </div>
+</div>
+
+<div class="charts-grid">
+    <div class="chart-card">
+        <h3>Anomalies by Distribution Center</h3>
+        <div id="chart-by-dc"></div>
+    </div>
+    <div class="chart-card">
+        <h3>Top 10 Affected Products</h3>
+        <div id="chart-by-product"></div>
+    </div>
+</div>
+
+<!-- Recent Anomalies Table -->
+<div class="card">
+    <div class="card-header">
+        <h3>Recent Anomalies</h3>
+        <a href="{{ url_for('anomaly_list') }}" class="btn btn-sm">View All →</a>
+    </div>
+    <div class="table-container">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Product</th>
+                    <th>Distribution Center</th>
+                    <th>Type</th>
+                    <th>Severity</th>
+                    <th>Stock Level</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for a in stats.recent_anomalies %}
+                <tr>
+                    <td>{{ a.date }}</td>
+                    <td>{{ a.product_name }}</td>
+                    <td>{{ a.distribution_center }}</td>
+                    <td><span class="badge badge-type-{{ a.anomaly_type }}">{{ a.anomaly_type }}</span></td>
+                    <td><span class="badge badge-{{ a.anomaly_severity }}">{{ a.anomaly_severity }}</span></td>
+                    <td>{{ "{:,}".format(a.stock_level) }}</td>
+                    <td>
+                        <a href="{{ url_for('anomaly_detail', anomaly_id=a.anomaly_id) }}"
+                            class="btn btn-sm btn-primary">
+                            Investigate
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Pass chart data to JS via hidden script tags -->
+<script id="data-by-type" type="application/json">{{ stats.by_type | tojson }}</script>
+<script id="data-by-severity" type="application/json">{{ stats.by_severity | tojson }}</script>
+<script id="data-by-dc" type="application/json">{{ stats.by_dc | tojson }}</script>
+<script id="data-by-product" type="application/json">{{ stats.by_product | tojson }}</script>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    (function () {
+        var typeData = JSON.parse(document.getElementById('data-by-type').textContent);
+        var sevData = JSON.parse(document.getElementById('data-by-severity').textContent);
+        var dcData = JSON.parse(document.getElementById('data-by-dc').textContent);
+        var prodData = JSON.parse(document.getElementById('data-by-product').textContent);
+
+        var darkLayout = {
+            paper_bgcolor: 'transparent',
+            plot_bgcolor: 'transparent',
+            font: { color: '#b0b0b0', family: 'Inter' }
+        };
+
+        // Anomalies by Type — Donut Chart
+        Plotly.newPlot('chart-by-type', [{
+            values: typeData.map(function (d) { return d.count; }),
+            labels: typeData.map(function (d) { return d.anomaly_type; }),
+            type: 'pie',
+            hole: 0.5,
+            marker: {
+                colors: ['#ff6b6b', '#ffa726', '#66bb6a', '#42a5f5', '#ab47bc', '#ef5350']
+            },
+            textinfo: 'label+percent',
+            textfont: { color: '#e0e0e0', size: 12 }
+        }], Object.assign({}, darkLayout, {
+            margin: { t: 20, b: 20, l: 20, r: 20 },
+            showlegend: false,
+            height: 300
+        }), { responsive: true });
+
+        // Anomalies by Severity — Bar Chart
+        var sevColors = { 'critical': '#ff1744', 'high': '#ff6d00', 'medium': '#ffc400' };
+        Plotly.newPlot('chart-by-severity', [{
+            x: sevData.map(function (d) { return d.anomaly_severity; }),
+            y: sevData.map(function (d) { return d.count; }),
+            type: 'bar',
+            marker: {
+                color: sevData.map(function (d) { return sevColors[d.anomaly_severity] || '#42a5f5'; })
+            },
+            text: sevData.map(function (d) { return d.count; }),
+            textposition: 'outside',
+            textfont: { color: '#e0e0e0' }
+        }], Object.assign({}, darkLayout, {
+            margin: { t: 20, b: 40, l: 50, r: 20 },
+            xaxis: { gridcolor: 'rgba(255,255,255,0.05)' },
+            yaxis: { gridcolor: 'rgba(255,255,255,0.05)' },
+            height: 300
+        }), { responsive: true });
+
+        // Anomalies by DC — Horizontal Bar
+        Plotly.newPlot('chart-by-dc', [{
+            y: dcData.map(function (d) { return d.distribution_center; }),
+            x: dcData.map(function (d) { return d.count; }),
+            type: 'bar',
+            orientation: 'h',
+            marker: { color: '#42a5f5', opacity: 0.85 },
+            text: dcData.map(function (d) { return d.count; }),
+            textposition: 'outside',
+            textfont: { color: '#e0e0e0' }
+        }], Object.assign({}, darkLayout, {
+            margin: { t: 10, b: 40, l: 200, r: 40 },
+            xaxis: { gridcolor: 'rgba(255,255,255,0.05)' },
+            yaxis: { gridcolor: 'rgba(255,255,255,0.05)', automargin: true },
+            height: 300
+        }), { responsive: true });
+
+        // Top Products — Horizontal Bar
+        Plotly.newPlot('chart-by-product', [{
+            y: prodData.map(function (d) { return d.product_name.substring(0, 25); }),
+            x: prodData.map(function (d) { return d.count; }),
+            type: 'bar',
+            orientation: 'h',
+            marker: {
+                color: prodData.map(function (_, i) { return 'hsl(' + (200 + i * 15) + ', 70%, 55%)'; }),
+                opacity: 0.85
+            },
+            text: prodData.map(function (d) { return d.count; }),
+            textposition: 'outside',
+            textfont: { color: '#e0e0e0' }
+        }], Object.assign({}, darkLayout, {
+            font: { color: '#b0b0b0', family: 'Inter', size: 11 },
+            margin: { t: 10, b: 40, l: 180, r: 40 },
+            xaxis: { gridcolor: 'rgba(255,255,255,0.05)' },
+            yaxis: { gridcolor: 'rgba(255,255,255,0.05)', automargin: true },
+            height: 350
+        }), { responsive: true });
+    })();
+</script>
+{% endblock %}

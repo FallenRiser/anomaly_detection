@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+{% block title %}Anomaly #{{ context.anomaly.anomaly_id }} - SupplyChain AI{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="breadcrumb">
+        <a href="{{ url_for('anomaly_list') }}">← Back to Anomalies</a>
+    </div>
+    <h1>
+        Anomaly #{{ context.anomaly.anomaly_id }}
+        <span class="badge badge-{{ context.anomaly.anomaly_severity }} badge-lg">{{ context.anomaly.anomaly_severity
+            }}</span>
+        <span class="badge badge-type-{{ context.anomaly.anomaly_type }} badge-lg">{{ context.anomaly.anomaly_type |
+            replace('_', ' ') }}</span>
+    </h1>
+</div>
+
+<!-- Anomaly Info Cards -->
+<div class="detail-grid">
+    <div class="detail-card">
+        <h4>📦 Product Information</h4>
+        <div class="detail-row"><span>Product:</span> <strong>{{ context.anomaly.product_name }}</strong></div>
+        <div class="detail-row"><span>SKU:</span> <span class="mono">{{ context.anomaly.product_id }}</span></div>
+        <div class="detail-row"><span>Category:</span> {{ context.anomaly.category }}</div>
+        <div class="detail-row"><span>Supplier:</span> {{ context.anomaly.supplier }}</div>
+        <div class="detail-row"><span>Shelf Life:</span> {{ context.product.shelf_life_days }} days</div>
+        <div class="detail-row"><span>Base Stock:</span> {{ "{:,}".format(context.product.base_stock) }} units</div>
+        <div class="detail-row"><span>Base Sales:</span> {{ context.product.base_sales_rate }} units/day</div>
+    </div>
+
+    <div class="detail-card">
+        <h4>📍 Location &amp; Timing</h4>
+        <div class="detail-row"><span>DC:</span> <strong>{{ context.anomaly.distribution_center }}</strong></div>
+        <div class="detail-row"><span>DC ID:</span> <span class="mono">{{ context.anomaly.distribution_center_id
+                }}</span></div>
+        <div class="detail-row"><span>Region:</span> {{ context.anomaly.region }}</div>
+        <div class="detail-row"><span>Capacity:</span> {{ "{:,}".format(context.distribution_center.capacity) }} units
+        </div>
+        <div class="detail-row"><span>Date:</span> <strong>{{ context.anomaly.date }}</strong></div>
+    </div>
+
+    <div class="detail-card">
+        <h4>📊 Current Metrics</h4>
+        <div class="detail-row"><span>Stock Level:</span> <strong
+                class="{% if context.anomaly.stock_level < context.anomaly.reorder_point %}text-danger{% endif %}">{{
+                "{:,}".format(context.anomaly.stock_level) }}</strong></div>
+        <div class="detail-row"><span>Reorder Point:</span> {{ "{:,}".format(context.anomaly.reorder_point) }}</div>
+        <div class="detail-row"><span>Sales Rate:</span> {{ context.anomaly.sales_rate }} units/day</div>
+        <div class="detail-row"><span>Demand Forecast:</span> {{ context.anomaly.demand_forecast }} units/day</div>
+        <div class="detail-row"><span>Lead Time:</span> {{ context.anomaly.lead_time_days }} days</div>
+        <div class="detail-row"><span>Days of Supply:</span>
+            <strong>{% if context.anomaly.sales_rate > 0 %}{{ (context.anomaly.stock_level / context.anomaly.sales_rate)
+                | round(1) }}{% else %}∞{% endif %}</strong> days
+        </div>
+    </div>
+</div>
+
+<!-- Inventory History Chart -->
+<div class="card">
+    <h3>📈 Inventory History (±14 days)</h3>
+    <div id="history-chart" style="height: 400px;"></div>
+</div>
+
+<!-- AI Explanation Panel -->
+<div class="card explanation-panel" id="explanationPanel">
+    <div class="card-header">
+        <h3>🤖 AI Root Cause Explanation</h3>
+        {% if not context.anomaly.explanation %}
+        <button class="btn btn-primary btn-glow" id="explainBtn" data-anomaly-id="{{ context.anomaly.anomaly_id }}">
+            <span class="btn-icon">⚡</span> Generate AI Explanation
+        </button>
+        {% endif %}
+    </div>
+
+    <div id="explanationContent">
+        {% if context.anomaly.explanation %}
+        <div class="explanation-text">{{ context.anomaly.explanation | safe }}</div>
+        <div class="explanation-meta">
+            <span>Explained at: {{ context.anomaly.explained_at }}</span>
+        </div>
+        {% else %}
+        <div class="explanation-placeholder">
+            <p>Click "Generate AI Explanation" to have the AI agent investigate this anomaly.</p>
+            <p class="subtle">The agent will query historical data, analyze trends, and consult the supply chain
+                knowledge base to generate a comprehensive explanation.</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <div id="explanationLoading" class="loading-indicator" style="display: none;">
+        <div class="spinner"></div>
+        <p>AI agent is investigating this anomaly...</p>
+        <p class="subtle">This may take 15-30 seconds as the agent queries data and analyzes patterns.</p>
+    </div>
+</div>
+
+<!-- Pass data to JS via hidden script -->
+<script id="chart-data" type="application/json">{{ context.history | tojson }}</script>
+<script id="anomaly-date" type="application/json">"{{ context.anomaly.date }}"</script>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    (function () {
+        // Parse data from embedded JSON
+        var historyData = JSON.parse(document.getElementById('chart-data').textContent);
+        var anomalyDate = JSON.parse(document.getElementById('anomaly-date').textContent);
+
+        var dates = historyData.map(function (h) { return h.date; });
+        var stocks = historyData.map(function (h) { return h.stock_level; });
+        var sales = historyData.map(function (h) { return h.sales_rate; });
+        var forecasts = historyData.map(function (h) { return h.demand_forecast; });
+        var reorderPts = historyData.map(function (h) { return h.reorder_point; });
+
+        var traces = [
+            {
+                x: dates, y: stocks, name: 'Stock Level',
+                type: 'scatter', mode: 'lines+markers',
+                line: { color: '#42a5f5', width: 2 },
+                marker: {
+                    size: dates.map(function (d) { return d === anomalyDate ? 14 : 6; }),
+                    color: dates.map(function (d) { return d === anomalyDate ? '#ff1744' : '#42a5f5'; }),
+                    symbol: dates.map(function (d) { return d === anomalyDate ? 'star' : 'circle'; })
+                }
+            },
+            {
+                x: dates, y: sales, name: 'Sales Rate',
+                type: 'scatter', mode: 'lines',
+                line: { color: '#66bb6a', width: 2, dash: 'dot' },
+                yaxis: 'y2'
+            },
+            {
+                x: dates, y: forecasts, name: 'Demand Forecast',
+                type: 'scatter', mode: 'lines',
+                line: { color: '#ffa726', width: 1.5, dash: 'dash' },
+                yaxis: 'y2'
+            },
+            {
+                x: dates, y: reorderPts, name: 'Reorder Point',
+                type: 'scatter', mode: 'lines',
+                line: { color: '#ef5350', width: 1, dash: 'dashdot' },
+                fill: 'none'
+            }
+        ];
+
+        var layout = {
+            paper_bgcolor: 'transparent',
+            plot_bgcolor: 'transparent',
+            font: { color: '#b0b0b0', family: 'Inter' },
+            margin: { t: 30, b: 50, l: 60, r: 60 },
+            xaxis: {
+                gridcolor: 'rgba(255,255,255,0.05)',
+                title: 'Date'
+            },
+            yaxis: {
+                gridcolor: 'rgba(255,255,255,0.05)',
+                title: 'Stock Level'
+            },
+            yaxis2: {
+                title: 'Sales / Forecast',
+                overlaying: 'y',
+                side: 'right',
+                gridcolor: 'rgba(255,255,255,0.03)'
+            },
+            legend: {
+                orientation: 'h',
+                y: -0.2,
+                font: { size: 11 }
+            },
+            shapes: [{
+                type: 'line',
+                x0: anomalyDate, x1: anomalyDate,
+                y0: 0, y1: 1, yref: 'paper',
+                line: { color: '#ff1744', width: 2, dash: 'dot' }
+            }],
+            annotations: [{
+                x: anomalyDate, y: 1, yref: 'paper',
+                text: '⚠ Anomaly',
+                showarrow: false,
+                font: { color: '#ff1744', size: 12 },
+                yanchor: 'bottom'
+            }]
+        };
+
+        Plotly.newPlot('history-chart', traces, layout, { responsive: true });
+    })();
+</script>
+{% endblock %}
